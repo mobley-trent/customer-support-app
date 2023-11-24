@@ -195,3 +195,80 @@ export const getTickets = async (
 		console.log(error); // Failure
 	}
 };
+
+export const updateTicketStatus = async (id, status) => {
+    try {
+        await db.updateDocument(
+            process.env.NEXT_PUBLIC_DB_ID,
+            process.env.NEXT_PUBLIC_TICKETS_COLLECTION_ID,
+            id,
+            { status }
+        );
+        successMessage("Status updated, refresh page 🎉");
+    } catch (error) {
+        console.log(error); // Failure
+        errorMessage("Encountered an error ❌");
+    }
+};
+
+export const sendMessage = async (text, docId) => {
+	const doc = await db.getDocument(
+		process.env.NEXT_PUBLIC_DB_ID,
+		process.env.NEXT_PUBLIC_TICKETS_COLLECTION_ID,
+		docId
+	);
+
+	try {
+		const user = await account.get();
+		const result = await db.updateDocument(
+			process.env.NEXT_PUBLIC_DB_ID,
+			process.env.NEXT_PUBLIC_TICKETS_COLLECTION_ID,
+			docId,
+			{
+				messages: [
+					...doc.messages,
+					JSON.stringify({
+						id: generateID(),
+						content: text,
+						admin: true,
+						name: user.name,
+					}),
+				],
+			}
+		);
+		if (result.$id) {
+			successMessage("Message Sent! ✅");
+			emailStaffMessage(
+				doc.name,
+				`https://customer-support.vercel.app/chat/${doc.$id}`,
+				doc.email,
+				doc.access_code
+			);
+		} else {
+			errorMessage("Error! Try resending your message❌");
+		}
+	} catch (error) {
+		const result = await db.updateDocument(
+			process.env.NEXT_PUBLIC_DB_ID,
+			process.env.NEXT_PUBLIC_TICKETS_COLLECTION_ID,
+			docId,
+			{
+				messages: [
+					...doc.messages,
+					JSON.stringify({
+						id: generateID(),
+						content: text,
+						admin: false,
+						name: "Customer",
+					}),
+				],
+			}
+		);
+		if (result.$id) {
+			successMessage("Message Sent! ✅");
+			notifyStaff(result.name, result.status, result.subject);
+		} else {
+			errorMessage("Error! Try resending your message❌");
+		}
+	}
+};
