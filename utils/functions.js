@@ -104,3 +104,94 @@ export const deleteUser = async (id) => {
         errorMessage("Encountered an error 😪");
     }
 };
+
+export const startMessage = async (
+	name,
+	email,
+	subject,
+	message,
+	attachment,
+	setLoading
+) => {
+	const createTicket = async (file_url = "https://google.com") => {
+		try {
+			const response = await db.createDocument(
+				process.env.NEXT_PUBLIC_DB_ID,
+				process.env.NEXT_PUBLIC_TICKETS_COLLECTION_ID,
+				ID.unique(),
+				{
+					name,
+					email,
+					subject,
+					content: message,
+					status: "open",
+					messages: [
+						JSON.stringify({
+							id: generateID(),
+							content: message,
+							admin: false,
+							name: "Customer",
+						}),
+					],
+					attachment_url: file_url,
+					access_code: generateID(),
+				}
+			);
+			//👇🏻 email user who created the ticket
+			emailTicketCreation(
+				name,
+				response.$id,
+				email,
+				convertDateTime(response.$createdAt),
+				subject
+			);
+			newTicketStaff(name);
+			setLoading(false);
+			successMessage("Ticket created 🎉");
+		} catch (error) {
+			errorMessage("Encountered saving ticket ❌");
+		}
+	};
+
+	if (attachment !== null) {
+		try {
+			const response = await storage.createFile(
+				process.env.NEXT_PUBLIC_BUCKET_ID,
+				ID.unique(),
+				attachment
+			);
+			const file_url = `https://cloud.appwrite.io/v1/storage/buckets/${process.env.NEXT_PUBLIC_BUCKET_ID}/files/${response.$id}/view?project=${process.env.NEXT_PUBLIC_PROJECT_ID}&mode=admin`;
+			createTicket(file_url);
+		} catch (error) {
+			errorMessage("Error uploading the image ❌");
+		}
+	} else {
+		await createTicket();
+	}
+};
+
+export const getTickets = async (
+	setOpenTickets,
+	setInProgressTickets,
+	setCompletedTickets
+) => {
+	try {
+		const response = await db.listDocuments(
+			process.env.NEXT_PUBLIC_DB_ID,
+			process.env.NEXT_PUBLIC_TICKETS_COLLECTION_ID
+		);
+		const tickets = response.documents;
+		const openTickets = tickets.filter((ticket) => ticket.status === "open");
+		const inProgressTickets = tickets.filter(
+			(ticket) => ticket.status === "in-progress"
+		);
+		const completedTickets = tickets.filter(
+			(ticket) => ticket.status === "completed"
+		);
+		setCompletedTickets(completedTickets);
+		setOpenTickets(openTickets);
+		setInProgressTickets(inProgressTickets);
+	} catch (error) {
+		console.log(error); // Failure
+	}
+};
